@@ -2,13 +2,14 @@ package com.eneyeitech;
 
 import java.io.File;
 import java.sql.*;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Scanner;
+import java.util.*;
 
 public class Main {
     private static Scanner scanner = new Scanner(System.in);
+    private static int selectedCar = 0;
+    private static CompanyDAO companyDAO;
+    private static CarDAO carDAO;
+
     public static void main(String[] args) {
 
         String search = "-databaseFileName";
@@ -23,8 +24,15 @@ public class Main {
         if (false) {
             DatabaseManager.createDatabase(dbName);
         }
+        //DatabaseManager.createPathDirectory();
 
-        //DatabaseManager.createCompanyTable("");
+        // create the required DAO Factory
+        DAOFactory h2DaoFactory = DAOFactory.getDAOFactory(DAOFactory.H2);
+
+        // Create a DAO
+        companyDAO = h2DaoFactory.getCompanyDAO();
+        carDAO = h2DaoFactory.getCarDAO();
+
 
         menuControl();
 
@@ -46,16 +54,53 @@ public class Main {
     public static void selection2(String inp) {
         switch (inp) {
             case "1":
-                DatabaseManager.listCompany();
+                System.out.println("Choose the company:");
+                displayCompanies();
+                System.out.println("0. Back");
+                String choice = scanner.nextLine();
+                if (!choice.equals("0")) {
+                    companyMenuControl(choice);
+                }
                 break;
             case "2":
                 System.out.println("Enter the company name:");
                 String name = scanner.nextLine();
-                DatabaseManager.createCompany(name);
+                companyDAO.insertCompany(name);
                 System.out.println("The company was created!");
                 break;
             case "0":
-                DatabaseManager.closeConnection();
+
+                break;
+            default:
+                break;
+        }
+    }
+
+    public static void selection3(String inp) {
+        Company company = companyDAO.findCompany(Integer.valueOf(inp));
+        if (company != null) {
+            dispayCompanyMenu(company.getName());
+            String choice = scanner.nextLine();
+            selection4(choice, company);
+        }
+    }
+
+    public static void selection4(String inp, Company company) {
+        switch (inp) {
+            case "1":
+                System.out.println("Car list:");
+                displayCars(company.getId());
+                //String choice = scanner.nextLine();
+                //selection3(choice);
+                break;
+            case "2":
+                System.out.println("Enter the car name:");
+                String name = scanner.nextLine();
+                carDAO.insertCar(name, company.getId());
+                System.out.println("The car was added!");
+                break;
+            case "0":
+
                 break;
             default:
                 break;
@@ -77,11 +122,47 @@ public class Main {
         return stringBuilder.toString();
     }
 
+
+
+    public static String companyMenu(String name) {
+        StringBuilder stringBuilder = new StringBuilder();
+        stringBuilder.append(String.format("%s company\n", name));
+        stringBuilder.append("1. Car list\n");
+        stringBuilder.append("2. Create a car\n");
+        stringBuilder.append("0. Back\n");
+        return stringBuilder.toString();
+    }
+
     public static void dispayMainMenu() {
         System.out.println(mainMenuStr());
     }
     public static void dispaySubMenu() {
         System.out.println(subMenuStr());
+    }
+
+    public static void dispayCompanyMenu(String name) {
+        System.out.println(companyMenu(name));
+    }
+
+
+    public static void  displayCompanies(){
+        Collection<Company> companies= companyDAO.selectCompaniesTO();
+        if (companies != null && companies.size() > 0) {
+            companies.stream().map(c -> String.format("%s. %s", c.getId(), c.getName()))
+                    .forEachOrdered(System.out::println);
+        } else {
+            System.out.println("The company list is empty!");
+        }
+    }
+
+    public static void  displayCars(int search){
+        Collection<Car> cars= carDAO.selectCarsTO(search);
+        if(cars != null && cars.size() > 0) {
+            cars.stream().map(c -> String.format("%s. %s", c.getId(), c.getName()))
+                    .forEachOrdered(System.out::println);
+        } else {
+            System.out.println("The car list is empty!");
+        }
     }
 
     public static void menuControl() {
@@ -99,6 +180,18 @@ public class Main {
             dispaySubMenu();
             input = scanner.nextLine();
             selection2(input);
+        } while (!input.equals("0"));
+    }
+
+    public static void companyMenuControl(String inp) {
+        String input = "";
+        do {
+            Company company = companyDAO.findCompany(Integer.valueOf(inp));
+            if (company != null) {
+                dispayCompanyMenu(company.getName());
+                input = scanner.nextLine();
+                selection4(input, company);
+            }
         } while (!input.equals("0"));
     }
 }
@@ -143,65 +236,24 @@ class DatabaseManager{
         }
         try (Connection conn = DriverManager.getConnection(connPath);
              Statement stat = conn.createStatement()) {
-            stat.execute("create table COMPANY(ID int, NAME varchar)");
+            stat.execute("create table COMPANY(" +
+                    "ID INTEGER PRIMARY KEY AUTO_INCREMENT," +
+                    " NAME VARCHAR UNIQUE NOT NULL" +
+                    ")");
+
+            stat.execute("create table CAR(" +
+                    "ID INTEGER PRIMARY KEY AUTO_INCREMENT," +
+                    " NAME VARCHAR UNIQUE NOT NULL," +
+                    " COMPANY_ID INTEGER NOT NULL," +
+                    " CONSTRAINT FK_COMPANY FOREIGN KEY (COMPANY_ID)" +
+                    " REFERENCES COMPANY(ID)" +
+                    ")");
 
             conn.setAutoCommit(true);
         } catch (Exception e) {
             e.printStackTrace();
         }
 
-    }
-
-    public static void createCompany(String companyName){
-        try {
-            String query = String.format("INSERT INTO COMPANY (NAME) VALUES ('%s')", companyName);
-            //statement.execute("INSERT INTO COMPANY (NAME) VALUES ()");
-            statement.execute(query);
-
-        } catch (SQLException e) {
-            e.printStackTrace();
-        } finally {
-
-        }
-
-
-    }
-
-    public static void alterCompany(String companyName){
-        try {
-            statement.execute("ALTER TABLE COMPANY" +
-                    " MODIFY COLUMN ID INTEGER NOT NULL");
-
-            statement.execute("ALTER TABLE COMPANY" +
-                    " ADD PRIMARY KEY (ID)");
-
-            statement.execute("ALTER TABLE COMPANY" +
-                    " ADD AUTO_INCREMENT (ID)");
-
-            statement.execute("ALTER TABLE COMPANY" +
-                    " ADD UNIQUE (NAME)");
-
-            statement.execute("ALTER TABLE COMPANY" +
-                    " MODIFY COLUMN NAME VARCHAR NOT NULL");
-            System.out.println("Table COMPANY altered.");
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-    }
-
-    public static void createCompanyTable(String companyName){
-        try {
-            statement.execute("DROP TABLE COMPANY" +
-                    " IF EXISTS ");
-
-            statement.execute("create table COMPANY(" +
-                    "ID INTEGER PRIMARY KEY AUTO_INCREMENT," +
-                    " NAME VARCHAR UNIQUE NOT NULL" +
-                    ")");
-
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
     }
 
     public static boolean createPathDirectory() {
@@ -212,32 +264,4 @@ class DatabaseManager{
         return created;
     }
 
-    public static void listCompany(){
-        try {
-            ResultSet resultSet = statement.executeQuery("SELECT * FROM COMPANY ORDER BY ID ASC");
-
-            if (!resultSet.next() ) {
-                System.out.println("The company list is empty!");
-            } else {
-                System.out.println("company list:");
-                do {
-
-                    int id = resultSet.getInt("ID");
-                    String name = resultSet.getString("NAME");
-                    System.out.printf("%s. %s\n", id, name);
-                } while (resultSet.next());
-            }
-
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-    }
-
-    public static void closeConnection(){
-        try {
-            connection.close();
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-    }
 }
