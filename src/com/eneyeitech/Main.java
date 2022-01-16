@@ -11,6 +11,11 @@ public class Main {
     private static int selectedCar = 0;
     private static CompanyDAO companyDAO;
     private static CarDAO carDAO;
+    private static CustomerDAO customerDAO;
+
+    private static List<Company> companies;
+    private static List<Car> cars;
+    private static List<Customer> customers;
 
     public static void main(String[] args) {
 
@@ -31,17 +36,20 @@ public class Main {
         // Create a DAO
         companyDAO = h2DaoFactory.getCompanyDAO();
         carDAO = h2DaoFactory.getCarDAO();
+        customerDAO = h2DaoFactory.getCustomerDAO();
 
         if (true) {
 
             if(true) {
                 System.out.println("carsharing/db created");
 
+                customerDAO.dropTable();
                 carDAO.dropTable();
                 companyDAO.dropTable();
 
                 companyDAO.createTable();
                 carDAO.createTable();
+                customerDAO.createTable();
             }
         }
 
@@ -54,7 +62,26 @@ public class Main {
     public static void selection1(String inp) {
         switch (inp) {
             case "1":
-                subMenuControl();
+                managerMenuControl();
+                break;
+            case "2":
+                System.out.println("Customer list:");
+                if (displayCustomers()) {
+                    System.out.println("0. Back");
+                } else {
+                    return;
+                }
+
+                String choice = scanner.nextLine();
+                if (!choice.equals("0")) {
+                    customerMenuControl(choice);
+                }
+                break;
+            case "3":
+                System.out.println("Enter the customer name:");
+                String name = scanner.nextLine();
+                customerDAO.insertCustomer(name);
+                System.out.println("The customer was added!");
                 break;
             case "0":
             default:
@@ -90,11 +117,29 @@ public class Main {
     }
 
     public static void selection3(String inp) {
-        Company company = companyDAO.findCompany(Integer.valueOf(inp));
-        if (company != null) {
-            dispayCompanyMenu(company.getName());
-            String choice = scanner.nextLine();
-            selection4(choice, company);
+        switch (inp) {
+            case "1":
+                System.out.println("Choose the company:");
+                if (displayCompanies()) {
+                    System.out.println("0. Back");
+                } else {
+                    return;
+                }
+
+                String choice = scanner.nextLine();
+                if (!choice.equals("0")) {
+                    companyMenuControl(choice);
+                }
+                break;
+            case "2":
+                System.out.println("Enter the company name:");
+                String name = scanner.nextLine();
+                companyDAO.insertCompany(name);
+                System.out.println("The company was created!");
+                break;
+            case "0":
+            default:
+                break;
         }
     }
 
@@ -116,17 +161,89 @@ public class Main {
         }
     }
 
+    public static void selection5(String inp, Customer customer) {
+        switch (inp) {
+            case "1":
+
+                if (customer.getRentedCarId() == 0) {
+                    System.out.println("Choose a company:");
+                    if (displayCompanies()) {
+                        System.out.println("0. Back");
+                    } else {
+                        return;
+                    }
+
+                    String choice = scanner.nextLine();
+                    if (!choice.equals("0")) {
+                        Company c = companies.get(Integer.valueOf(choice) - 1);
+                        if (displayCars(c.getId())) {
+                            System.out.println("0. Back");
+                        } else {
+                            return;
+                        }
+
+                        String selection = scanner.nextLine();
+                        if (!choice.equals("0")) {
+                            Car a = cars.get(Integer.valueOf(selection) - 1);
+                            customer.setRentedCarId(a.getId());
+                            if (customerDAO.updateCustomer(customer)) {
+                                System.out.printf("You rented '%s'", a.getName());
+                            } else {
+                                return;
+                            }
+                        }
+                    }
+                } else {
+                    System.out.println("You've already rented a car!");
+                }
+
+                break;
+            case "2":
+                if (customer.getRentedCarId() == 0) {
+                    System.out.println("You didn't rent a car!");
+                } else {
+                    customer.setRentedCarId(0);
+                    customerDAO.updateCustomer(customer);
+                    System.out.println("You've returned a rented car!");
+                }
+                break;
+            case "3":
+                if (customer.getRentedCarId() == 0) {
+                    System.out.println("You didn't rent a car!");
+                } else {
+                    Car car = carDAO.findCar(customer.getRentedCarId());
+                    Company company= companyDAO.findCompany(car.getCompanyId());
+                    System.out.printf("Your rented car:\n%s\nCompany:\n%s\n", car.getName(), company.getName());
+                }
+                break;
+            case "0":
+            default:
+                break;
+        }
+    }
+
     public static String mainMenuStr() {
         StringBuilder stringBuilder = new StringBuilder();
         stringBuilder.append("1. Log in as a manager\n");
+        stringBuilder.append("2. Log in as a customer\n");
+        stringBuilder.append("3. Create a customer\n");
         stringBuilder.append("0. Exit\n");
         return stringBuilder.toString();
     }
 
-    public static String subMenuStr() {
+    public static String managerMenuStr() {
         StringBuilder stringBuilder = new StringBuilder();
         stringBuilder.append("\n1. Company list\n");
         stringBuilder.append("2. Create a company\n");
+        stringBuilder.append("0. Back\n");
+        return stringBuilder.toString();
+    }
+
+    public static String customerMenuStr(String name) {
+        StringBuilder stringBuilder = new StringBuilder();
+        stringBuilder.append("\n1. Rent a car\n");
+        stringBuilder.append("2. Return a rented car\n");
+        stringBuilder.append("3. My rented car\n");
         stringBuilder.append("0. Back\n");
         return stringBuilder.toString();
     }
@@ -143,8 +260,12 @@ public class Main {
     public static void dispayMainMenu() {
         System.out.println(mainMenuStr());
     }
-    public static void dispaySubMenu() {
-        System.out.println(subMenuStr());
+    public static void dispayManagerMenu() {
+        System.out.println(managerMenuStr());
+    }
+
+    public static void dispayCustomerMenu(String name) {
+        System.out.println(customerMenuStr(name));
     }
 
     public static void dispayCompanyMenu(String name) {
@@ -153,9 +274,10 @@ public class Main {
 
 
     public static boolean  displayCompanies(){
-        Collection<Company> companies= companyDAO.selectCompaniesTO();
+        companies = companyDAO.selectCompaniesTO();
+        AtomicInteger cc = new AtomicInteger(1);
         if (companies != null && companies.size() > 0) {
-            companies.stream().map(c -> String.format("%s. %s", c.getId(), c.getName()))
+            companies.stream().map(c -> String.format("%s. %s", cc.getAndIncrement(), c.getName()))
                     .forEachOrdered(System.out::println);
             return true;
         } else {
@@ -164,15 +286,29 @@ public class Main {
         }
     }
 
-    public static void  displayCars(int search){
-        Collection<Car> cars= carDAO.selectCarsTO(search);
-        int index = 0;
+    public static boolean  displayCustomers(){
+        customers= customerDAO.selectCustomersTO();
+        AtomicInteger cc = new AtomicInteger(1);
+        if (customers != null && customers.size() > 0) {
+            customers.stream().map(c -> String.format("%s. %s", cc.getAndIncrement(), c.getName()))
+                    .forEachOrdered(System.out::println);
+            return true;
+        } else {
+            System.out.println("The customer list is empty!");
+            return false;
+        }
+    }
+
+    public static boolean  displayCars(int search){
+        cars= carDAO.selectCarsTO(search);
         AtomicInteger cc = new AtomicInteger(1);
         if(cars != null && cars.size() > 0) {
             cars.stream().map(c -> String.format("%s. %s", cc.getAndIncrement(), c.getName()))
                     .forEachOrdered(System.out::println);
+            return true;
         } else {
             System.out.println("The car list is empty!");
+            return false;
         }
     }
 
@@ -185,14 +321,28 @@ public class Main {
         } while (!input.equals("0"));
     }
 
-    public static void subMenuControl() {
+    public static void managerMenuControl() {
         String input = "";
         do {
-            dispaySubMenu();
+            dispayManagerMenu();
             input = scanner.nextLine();
             selection2(input);
         } while (!input.equals("0"));
     }
+
+    public static void customerMenuControl(String inp) {
+        String input = "";
+        do {
+            Customer customer = customerDAO.findCustomer(Integer.valueOf(inp));
+            if (customer != null) {
+                dispayCustomerMenu(customer.getName());
+                input = scanner.nextLine();
+                selection5(input, customer);
+            }
+        } while (!input.equals("0"));
+    }
+
+
 
     public static void companyMenuControl(String inp) {
         String input = "";
@@ -269,13 +419,43 @@ class Company {
     }
 }
 
+class Customer {
+    private int id;
+    private String name;
+    private int rentedCarId;
+
+    public int getId() {
+        return id;
+    }
+
+    public void setId(int id) {
+        this.id = id;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public int getRentedCarId() {
+        return rentedCarId;
+    }
+
+    public void setRentedCarId(int rentedCarId) {
+        this.rentedCarId = rentedCarId;
+    }
+}
+
 interface CarDAO {
     public int insertCar(String name, int id);
     public boolean deleteCar(Car car);
     public Car findCar(int id);
     public boolean updateCar(Car car);
     public ResultSet selectCarsRS();
-    public Collection selectCarsTO(int search);
+    public ArrayList<Car> selectCarsTO(int search);
     public void createTable();
     public void dropTable();
 }
@@ -286,13 +466,20 @@ interface CompanyDAO {
     public Company findCompany(int id);
     public boolean updateCompany(Company company);
     public ResultSet selectCompaniesRS();
-    public Collection selectCompaniesTO();
+    public ArrayList<Company> selectCompaniesTO();
     public void createTable();
     public void dropTable();
 }
 
 interface CustomerDAO {
-
+    public int insertCustomer(String name);
+    public boolean deleteCustomer(Customer customer);
+    public Customer findCustomer(int id);
+    public boolean updateCustomer(Customer customer);
+    public ResultSet selectCustomersRS();
+    public ArrayList<Customer> selectCustomersTO();
+    public void createTable();
+    public void dropTable();
 }
 
 abstract class DAOFactory {
@@ -383,12 +570,12 @@ class H2CarDAO implements CarDAO{
     }
 
     @Override
-    public Collection selectCarsTO(int search) {
+    public ArrayList<Car> selectCarsTO(int search) {
         // implement search cars here using the
         // supplied criteria.
         // Alternatively, implement to return a Collection
         // of Transfer Objects.
-        Collection collection = new ArrayList();
+        ArrayList<Car> collection = new ArrayList();
         try (Statement statement = H2DAOFactory.createConnection().createStatement();){
             String query = String.format("SELECT * FROM CAR WHERE COMPANY_ID = %d ORDER BY ID ASC", search);
             ResultSet rs = statement.executeQuery(query);
@@ -522,12 +709,12 @@ class H2CompanyDAO implements CompanyDAO{
     }
 
     @Override
-    public Collection selectCompaniesTO() {
+    public ArrayList<Company> selectCompaniesTO() {
         // implement search companies here using the
         // supplied criteria.
         // Alternatively, implement to return a Collection
         // of Transfer Objects.
-        Collection collection = new ArrayList();
+        ArrayList<Company> collection = new ArrayList();
         try (Statement statement = H2DAOFactory.createConnection().createStatement();){
             String query = String.format("SELECT * FROM COMPANY ORDER BY ID ASC");
             ResultSet rs = statement.executeQuery(query);
@@ -575,8 +762,159 @@ class H2CompanyDAO implements CompanyDAO{
 }
 
 class H2CustomerDAO implements CustomerDAO{
-}
+    public H2CustomerDAO() {
+        // initialization
+    }
 
+    // The following methods can use
+    // H2DAOFactory.createConnection()
+    // to get a connection as required
+
+    @Override
+    public int insertCustomer(String name) {
+        // Implement insert company here.
+        // Return newly created company number
+        // or a -1 on error
+
+        try (Statement statement = H2DAOFactory.createConnection().createStatement();){
+            String query = String.format("INSERT INTO CUSTOMER (NAME) VALUES ('%s')", name);
+            statement.execute(query);
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
+
+        return 0;
+    }
+
+    @Override
+    public boolean deleteCustomer(Customer customer) {
+        // Implement delete company here
+        // Return true on success, false on failure
+        return false;
+    }
+
+    @Override
+    public Customer findCustomer(int id) {
+        // Implement find a company here using supplied
+        // argument values as search criteria
+        // Return a Transfer Object if found,
+        // return null on error or if not found
+
+        try (Statement statement = H2DAOFactory.createConnection().createStatement();){
+            String query = String.format("SELECT * FROM CUSTOMER WHERE ID = %d", id);
+            ResultSet rs = statement.executeQuery(query);
+            Customer customer = null;
+            if (!rs.next() ) {
+
+            } else {
+                do {
+                    customer = new Customer();
+                    int i = rs.getInt("ID");
+                    int ii = rs.getInt("RENTED_CAR_ID");
+                    String name = rs.getString("NAME");
+                    customer.setName(name);
+                    customer.setId(i);
+                    customer.setRentedCarId(ii);
+                    return customer;
+                } while (rs.next());
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
+        return null;
+    }
+
+    @Override
+    public boolean updateCustomer(Customer customer) {
+        // implement update record here using data
+        // from the companyData Transfer Object
+        // Return true on success, false on failure or
+        // error
+
+        try (Statement statement = H2DAOFactory.createConnection().createStatement();){
+            String query = "";
+            if (customer.getRentedCarId() == 0) {
+                query = String.format("UPDATE CUSTOMER SET RENTED_CAR_ID = NULL WHERE ID = %d", customer.getId());
+            }
+            else {
+                query = String.format("UPDATE CUSTOMER SET RENTED_CAR_ID = %d WHERE ID = %d", customer.getRentedCarId(), customer.getId());
+            }
+            statement.execute(query);
+            return true;
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
+        return false;
+    }
+
+    @Override
+    public ResultSet selectCustomersRS() {
+        // implement search companies here using the
+        // supplied criteria.
+        // Return a RowSet
+        return null;
+    }
+
+    @Override
+    public ArrayList<Customer> selectCustomersTO() {
+        // implement search companies here using the
+        // supplied criteria.
+        // Alternatively, implement to return a Collection
+        // of Transfer Objects.
+        ArrayList<Customer> collection = new ArrayList();
+        try (Statement statement = H2DAOFactory.createConnection().createStatement();){
+            String query = String.format("SELECT * FROM CUSTOMER ORDER BY ID ASC");
+            ResultSet rs = statement.executeQuery(query);
+            Customer customer = null;
+            if (!rs.next() ) {
+
+            } else {
+                do {
+                    customer = new Customer();
+                    int i = rs.getInt("ID");
+                    int ii = rs.getInt("RENTED_CAR_ID");
+                    String name = rs.getString("NAME");
+                    customer.setName(name);
+                    customer.setId(i);
+                    customer.setRentedCarId(ii);
+                    collection.add(customer);
+                } while (rs.next());
+                return collection;
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    public void createTable(){
+        try (Statement statement = H2DAOFactory.createConnection().createStatement();){
+            statement.execute("create table if not exists CUSTOMER(" +
+                    "ID INTEGER PRIMARY KEY AUTO_INCREMENT," +
+                    " NAME VARCHAR UNIQUE NOT NULL," +
+                    " RENTED_CAR_ID INTEGER DEFAULT NULL," +
+                    " CONSTRAINT FK_CAR FOREIGN KEY (RENTED_CAR_ID)" +
+                    " REFERENCES CAR(ID)" +
+                    ")");
+            System.out.println("Customer table created.");
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
+    }
+
+    public void dropTable(){
+        try (Statement statement = H2DAOFactory.createConnection().createStatement();){
+            statement.execute("drop table CUSTOMER if exists");
+            System.out.println("Customer table dropped.");
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+}
 
 class H2DAOFactory  extends DAOFactory{
     public static final String DRIVER = "org.h2.Driver";
@@ -618,8 +956,6 @@ class H2DAOFactory  extends DAOFactory{
         return new H2CustomerDAO();
     }
 }
-
-
 
 
 
